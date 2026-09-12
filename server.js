@@ -9,18 +9,10 @@ const { execFile } = require("child_process");
 dotenv.config();
 
 const app = express();
-const PORT = 5000;
-
-// --------------------------------------------------
-// Middleware
-// --------------------------------------------------
+const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
-
-// --------------------------------------------------
-// Downloads folder
-// --------------------------------------------------
 
 const downloadsDir = path.join(__dirname, "downloads");
 
@@ -29,10 +21,6 @@ if (!fs.existsSync(downloadsDir)) {
 }
 
 app.use("/downloads", express.static(downloadsDir));
-
-// --------------------------------------------------
-// Helper: run yt-dlp
-// --------------------------------------------------
 
 function runYtDlp(args, callback) {
   console.log("");
@@ -69,9 +57,9 @@ function runYtDlp(args, callback) {
   );
 }
 
-// --------------------------------------------------
-// Root
-// --------------------------------------------------
+/* ================================
+   API STATUS
+================================ */
 
 app.get("/", (req, res) => {
   res.json({
@@ -80,10 +68,6 @@ app.get("/", (req, res) => {
   });
 });
 
-// --------------------------------------------------
-// API test
-// --------------------------------------------------
-
 app.get("/api/test", (req, res) => {
   res.json({
     success: true,
@@ -91,18 +75,40 @@ app.get("/api/test", (req, res) => {
   });
 });
 
-// --------------------------------------------------
-// PREVIEW
-// --------------------------------------------------
+/* ================================
+   YT-DLP VERSION
+================================ */
+
+app.get("/api/yt-dlp-version", (req, res) => {
+  execFile(
+    "yt-dlp",
+    ["--version"],
+    {
+      timeout: 30000,
+    },
+    (error, stdout, stderr) => {
+      if (error) {
+        return res.status(500).json({
+          success: false,
+          error: error.message,
+          stderr: stderr || "",
+        });
+      }
+
+      return res.json({
+        success: true,
+        version: stdout.trim(),
+      });
+    }
+  );
+});
+
+/* ================================
+   PREVIEW
+================================ */
 
 app.post("/api/preview", (req, res) => {
   const { url } = req.body;
-
-  console.log("");
-  console.log("========================================");
-  console.log("Preview request");
-  console.log("URL:", url);
-  console.log("========================================");
 
   if (!url) {
     return res.status(400).json({
@@ -122,8 +128,6 @@ app.post("/api/preview", (req, res) => {
 
   runYtDlp(args, (error, stdout, stderr) => {
     if (error) {
-      console.log("Preview failed");
-
       return res.status(500).json({
         success: false,
         error:
@@ -137,8 +141,6 @@ app.post("/api/preview", (req, res) => {
     try {
       const data = JSON.parse(stdout);
 
-      console.log("Preview successful:", data.id);
-
       return res.json({
         success: true,
         id: data.id || null,
@@ -151,7 +153,7 @@ app.post("/api/preview", (req, res) => {
             : null,
       });
     } catch (parseError) {
-      console.log("Preview JSON parse error:", parseError);
+      console.log("JSON parse error:", parseError);
 
       return res.status(500).json({
         success: false,
@@ -161,18 +163,12 @@ app.post("/api/preview", (req, res) => {
   });
 });
 
-// --------------------------------------------------
-// DOWNLOAD
-// --------------------------------------------------
+/* ================================
+   DOWNLOAD
+================================ */
 
 app.post("/api/download", (req, res) => {
   const { url } = req.body;
-
-  console.log("");
-  console.log("========================================");
-  console.log("Download request");
-  console.log("URL:", url);
-  console.log("========================================");
 
   if (!url) {
     return res.status(400).json({
@@ -188,25 +184,14 @@ app.post("/api/download", (req, res) => {
     `${jobId}.%(ext)s`
   );
 
-  // IMPORTANT:
-  // This intentionally matches the minimal
-  // yt-dlp command that successfully downloaded
-  // the TikTok from Termux.
   const args = [
     url,
     "-o",
     outputTemplate,
   ];
 
-  console.log("Job ID:", jobId);
-  console.log("Output template:", outputTemplate);
-
   runYtDlp(args, (error, stdout, stderr) => {
     if (error) {
-      console.log("");
-      console.log("Download failed");
-      console.log("========================================");
-
       return res.status(500).json({
         success: false,
         error:
@@ -217,7 +202,6 @@ app.post("/api/download", (req, res) => {
       });
     }
 
-    // Find the file created by this download
     let downloadedFile = null;
 
     try {
@@ -227,7 +211,7 @@ app.post("/api/download", (req, res) => {
         file.startsWith(`${jobId}.`)
       );
     } catch (fileError) {
-      console.log("Unable to inspect downloads folder");
+      console.log("File search error:", fileError);
 
       return res.status(500).json({
         success: false,
@@ -236,24 +220,11 @@ app.post("/api/download", (req, res) => {
     }
 
     if (!downloadedFile) {
-      console.log("yt-dlp finished but no output file was found");
-
       return res.status(500).json({
         success: false,
         error: "Download completed but video file was not found",
       });
     }
-
-    const filePath = path.join(
-      downloadsDir,
-      downloadedFile
-    );
-
-    console.log("");
-    console.log("Download successful!");
-    console.log("File:", downloadedFile);
-    console.log("Path:", filePath);
-    console.log("========================================");
 
     return res.json({
       success: true,
@@ -265,13 +236,14 @@ app.post("/api/download", (req, res) => {
   });
 });
 
-// --------------------------------------------------
-// Start server
-// --------------------------------------------------
+/* ================================
+   START SERVER
+================================ */
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log("");
   console.log("========================================");
   console.log(`TikDown API running on port ${PORT}`);
+  console.log(`Port: ${PORT}`);
   console.log("========================================");
 });
